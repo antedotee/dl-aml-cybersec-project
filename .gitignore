@@ -9,5 +9,7 @@ __pycache__/
 dist/
 build/
 scikit_learn_data/
+data/nsl/*.txt
 reports/figures/*.png
 reports/phase1_metrics.json
+reports/phase1_ablation_nsl.json

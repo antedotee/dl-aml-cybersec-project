@@ -1,8 +1,15 @@
-# Adaptive Cyber-Physical Security — Phase 1 (Anomaly Detection)
+# Adaptive Cyber-Physical Security — Project 2 (Phase 1 + hybrid stack)
 
-Industrial and enterprise networks must flag **zero-day** behavior without attack signatures. This repository implements a **semi-supervised** intrusion-detection baseline: models see **benign traffic only** at training time, then score held-out traffic containing attacks.
+Industrial and enterprise networks must flag **zero-day** behavior without attack signatures. This repository implements a **semi-supervised** pipeline aligned with the **“hypersphere of normalcy”** story:
 
-Phase 1 focuses on **dataset understanding**, **transparent feature construction**, **classical statistical baselines**, and **advanced probabilistic / kernel detectors** (Gaussian Mixture + One-Class SVM). Deep learning and the hybrid system are reserved for later phases, but the evaluation hooks and ablation scaffolding match the course specification.
+1. **NSL-KDD** tabular connection records (same statistical view as many IDS backends).  
+2. **Masked autoencoder (PyTorch)** — BERT-style *feature* masking on benign traffic; reconstruction error flags distributional drift.  
+3. **One-Class SVM (scikit-learn)** — RBF margin on **raw features** (Model A) and on **frozen latent embeddings** (hybrid leg).  
+4. **Hybrid (Model C)** — combines normalized reconstruction MSE with OCSVM-on-*z* (weight tuned on validation).
+
+**Scapy:** offline work uses NSL rows; **Scapy** is the documented bridge from **PCAP / live packets** → flow features (see the main notebook).  
+
+**Primary Phase-1 artifact for GitHub upload:** executed notebook `notebooks/phase1_eval_nsl_mae_ocsvm.ipynb` (regenerate via `scripts/build_phase1_rubric_notebook.py` + `jupyter nbconvert --execute`).
 
 ## Literature anchors (what to cite in your report)
 
@@ -10,6 +17,9 @@ Phase 1 focuses on **dataset understanding**, **transparent feature construction
 - Schölkopf et al., *Estimating the Support of a High-Dimensional Distribution* (Neural Computation, 2001) — One-Class SVM / SVDD perspective.
 - Tax & Duin, *Support Vector Data Description* (Machine Learning, 2004) — geometric interpretation of one-class kernels.
 - Bishop, *Pattern Recognition and Machine Learning* (Springer, 2006) — EM for mixture models, Gaussian mixtures, model selection (BIC).
+- Vincent et al., *Stacked Denoising Autoencoders* (ICML 2008) — reconstruction-based representation learning.
+- Devlin et al., *BERT* (NAACL 2019) — masked-token pre-training (we apply masking to **tabular** flow features).
+- Tavallaee et al., *Toward a Reliable Evaluation of Network IDS* (2012) — NSL-KDD motivation.
 - Lakhina, Crovella & Diot, *Mining Anomalies Using Traffic Feature Distributions* (SIGCOMM MineNet, 2005) — multivariate flow-feature anomaly motivation.
 - Mahoney & Chan, *Learning Nonstationary Models of Normal Network Traffic* (RAID, 2002) — cautionary notes on KDDCup99 evaluation non-stationarity (acknowledge limitations).
 
@@ -23,47 +33,35 @@ Phase 1 focuses on **dataset understanding**, **transparent feature construction
 
 ## Data
 
-We load the sklearn-hosted **KDDCup99** extract (`fetch_kddcup99`, `subset="SA"`). This keeps the project **reproducible** without manual mirrors. Your report should still discuss dataset age and **concept drift** as limitations (link to Mahoney & Chan).
+- **NSL-KDD** (`KDDTrain+` / `KDDTest+`) is downloaded automatically to `data/nsl/` (gitignored) from a [mirrored copy](https://github.com/jmnwong/NSL-KDD-Dataset) using **certifi** for TLS. Use `train_variant="twenty"` in code for faster iteration (`KDDTrain+_20Percent.txt`).  
+- **KDDCup99 SA** via sklearn remains available in `scripts/run_phase1.py` / `cps_ad/phase1.py` as an alternate benchmark.  
+- Discuss **concept drift** and protocol non-stationarity in your report (Mahoney & Chan; NSL train/test protocol limits).
 
-## Methods implemented (Phase 1)
+## Methods implemented
 
-1. **EDA-driven transforms**: identify heavy-tailed numeric flow statistics via skewness; apply `log1p` where it materially reduces skew (see `run_eda.py` output).
-2. **Preprocessing**: median imputation + `StandardScaler` for numeric fields; `OneHotEncoder(handle_unknown="ignore")` for symbolic fields (`protocol_type`, `service`, `flag`, …).
-3. **Baselines**
-   - **Max |z|** anomaly score vs benign column means (simple multivariate guardrail).
-   - **Shrunk Mahalanobis** anomaly score (`LedoitWolf`).
-4. **Advanced ML**
-   - **GMM** with **diagonal** covariances per component (scalable under high-dimensional one-hot expansions; still a full EM mixture).
-   - **One-Class SVM** (RBF, tuned `nu` in code; extend with grid search in Phase 2).
+1. **EDA-driven transforms**: skew audit → `log1p` on top heavy-tailed numerics.  
+2. **Preprocessing**: median imputation + `StandardScaler`; `OneHotEncoder(handle_unknown="ignore")` on symbolic fields — **fit on benign train only**.  
+3. **Baselines / advanced ML (tabular):** max-|z|, Ledoit–Wolf Mahalanobis, **GMM** (EM + **BIC** for `K`), **One-Class SVM** on raw scaled vectors.  
+4. **Deep learning:** **Masked autoencoder** (dropout, BatchNorm, AdamW, early stopping, Xavier init); anomaly score = **reconstruction MSE** (RMSE for reporting).  
+5. **Hybrid:** RBF **OCSVM on frozen encoder latents** + normalized recon error; **validation grid** over convex weight `w_recon`.
 
-**Thresholding protocol (transparent, defensible):** each model produces a scalar **anomaly score** (higher ⇒ more suspicious). We tune a single threshold on the **validation** split to maximize **F1**, then freeze it for **test** reporting. ROC-AUC / PR-AUC are reported **without** thresholding.
+**Thresholding:** per model, tune one threshold on **train-split validation** for **F1**, report **NSL KDDTest+** metrics at that threshold; ROC-AUC / PR-AUC are threshold-free.
 
-## Architecture (Phase 1 data flow)
+## Architecture (high level)
 
-```mermaid
-flowchart LR
-  D[KDDCup99 SA] --> E[EDA skew audit]
-  E --> F[log1p on top-skew numerics]
-  F --> P[Impute + scale + one-hot]
-  P -->|fit on benign train only| B[Baselines + GMM + OCSVM]
-  B --> S[Anomaly scores]
-  S --> T[Threshold tune on val]
-  T --> M[Test metrics + JSON artifact]
-```
+See the **mermaid** diagram inside `notebooks/phase1_eval_nsl_mae_ocsvm.ipynb` (course deliverable). Data flow: **NSL row** → skew / `log1p` → **ColumnTransformer** → **MAE (benign)** → **latent z** → **OCSVM(z)**; parallel **OCSVM(x)** on raw features; **hybrid** fuses recon + margin.
 
-For the full course deliverable, extend this diagram in Phase 3 with a **neural encoder** feeding the same scoring head (hybrid).
+## Ablation (required A / B / C)
 
-## Ablation scaffolding (per course spec)
+The executed notebook prints a table for:
 
-Phase 1 emits a **precursor** table (statistical / probabilistic detectors). Populate the final rows after Phase 2/3:
-
-| Model | What to report |
+| Model | Role in this repo |
 | --- | --- |
-| **A — Advanced ML only** | Best of {Mahalanobis, GMM, OCSVM} after honest tuning |
-| **B — Deep learning only** | Sequence / representation model (e.g., Transformer or LSTM autoencoder) |
-| **C — Hybrid** | Shared representation + explicit density / margin boundary |
+| **A** | One-Class SVM on **scaled raw x** (plus auxiliary Mahalanobis / GMM / max-z rows) |
+| **B** | **MAE reconstruction MSE** only |
+| **C** | **Hybrid**: tuned blend of recon + **OCSVM on frozen z** |
 
-Run `scripts/run_phase1.py` and paste the Markdown table it prints into your LaTeX report.
+Also run `python scripts/run_phase1.py` for the KDDCup99 SA quick table if needed.
 
 ## Setup
 
@@ -83,6 +81,19 @@ python scripts/run_phase1.py --synthetic
 ```
 
 Use `--synthetic` only for plumbing validation; your graded report should still analyze **real** intrusion traffic and discuss dataset limitations.
+
+## Jupyter (upload-ready executed notebook)
+
+```bash
+source .venv/bin/activate
+pip install -r requirements.txt -r requirements-notebooks.txt
+# Regenerate source cells (optional) then execute and save all outputs into the .ipynb:
+python scripts/build_phase1_rubric_notebook.py
+jupyter nbconvert --execute --to notebook --inplace notebooks/phase1_eval_nsl_mae_ocsvm.ipynb --ExecutePreprocessor.timeout=900
+```
+
+Commit **`notebooks/phase1_eval_nsl_mae_ocsvm.ipynb`** to GitHub so markers see plots/tables without re-running.  
+Legacy exploratory notebook: `notebooks/phase1_adaptive_cps.ipynb` (KDDCup99 / synthetic).
 
 ## Commands
 
