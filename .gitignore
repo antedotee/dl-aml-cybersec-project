@@ -13,3 +13,14 @@ data/nsl/*.txt
 reports/figures/*.png
 reports/phase1_metrics.json
 reports/phase1_ablation_nsl.json
+
+# LaTeX build artifacts (keep report/main.tex and references.bib)
+report/*.aux
+report/*.bbl
+report/*.blg
+report/*.log
+report/*.out
+report/*.toc
+report/*.lof
+report/*.lot
+report/*.synctex.gz

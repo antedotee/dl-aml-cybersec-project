@@ -11,7 +11,8 @@ Industrial and enterprise networks must flag **zero-day** behavior without attac
 
 **Primary deliverable:** the Jupyter notebook `notebooks/phase1_eval_nsl_mae_ocsvm.ipynb` — run it locally with **Run All** or `jupyter nbconvert --execute` so outputs are saved for GitHub.
 
-**Repository layout (every file explained):** see [architecture.md](architecture.md).
+**Repository layout (every file explained):** see [architecture.md](architecture.md).  
+**PDF report (LaTeX):** see [report/README.md](report/README.md) — authors Kartik Yadav \& Agrapujya Lashkari (Rishihood University).
 
 ## Literature anchors (what to cite in your report)
 

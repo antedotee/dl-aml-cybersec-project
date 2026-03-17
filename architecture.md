@@ -12,6 +12,13 @@ Everything below is under the project root `dl-aml-cybersec-project/`.
 .
 ├── architecture.md              # This file — layout and module reference
 ├── README.md                    # Quick start, setup, how to run the notebook
+├── report/                      # LaTeX course report → PDF (see report/README.md)
+│   ├── main.tex
+│   ├── references.bib
+│   ├── Makefile
+│   ├── README.md                # Install LaTeX + `make`
+│   ├── scripts/plot_ablation_figure.py
+│   └── figures/generated/       # ablation_roc_auc.pdf (from script)
 ├── requirements.txt             # Python dependencies (includes Jupyter stack)
 ├── pytest.ini                   # Pytest: pythonpath=src, “slow” marker
 ├── .gitignore                   # Ignores venv, caches, downloads, generated reports
