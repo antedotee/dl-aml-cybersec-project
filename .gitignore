@@ -14,6 +14,14 @@ reports/figures/*.png
 reports/phase1_metrics.json
 reports/phase1_ablation_nsl.json
 
+# Phase 2 artifacts (model checkpoints + downloaded CSVs are large)
+data/cic_ids/*.csv
+data/cic_ids/*.zip
+data/demo_pcaps/*.pcap
+models/
+*.pt
+*.npz
+
 # LaTeX build artifacts (keep report/main.tex and references.bib)
 report/*.aux
 report/*.bbl

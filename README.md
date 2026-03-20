@@ -93,6 +93,87 @@ reports/figures/   # plots from the notebook (png gitignored)
 - Pin `numpy<2` avoids some broken wheels on certain setups.
 - `torch` is CPU-first; GPU is used automatically if available in the MAE training helpers.
 
+## Phase 2 — refined deep model on CIC-IDS2017
+
+Phase 2 replaces the MLP-MAE with an **FT-Transformer** pretrained by **Masked
+Feature Modeling** and finetuned with a **Deep SVDD** objective on **CIC-IDS2017**
+(Sharafaldin et al. 2018). Phase 1 (NSL-KDD pipeline + Model A baselines + Model
+C hybrid) is **left intact**; Model C is *deliberately untouched* per the Phase-2
+brief so the comparison stays honest.
+
+### Files added for Phase 2
+
+| Path | Purpose |
+|------|---------|
+| `src/cps_ad/cic_ids.py` | CIC-IDS2017 downloader, schema normalizer, `make_zero_day_split` (leave-one-attack-family-out). |
+| `src/cps_ad/flow_extractor.py` | PCAP / live-NIC -> CICFlowMeter-v3 78-feature flow extractor (pure Python; uses `scapy`). |
+| `src/cps_ad/torch_ft_svdd.py` | `FTTransformerSVDD` model + MFM and Deep SVDD trainers + attention attribution. |
+| `src/cps_ad/refined_ml.py` | Refined Model A: OCSVM (median-gamma) + IsolationForest + MCD-Mahalanobis with isotonic calibration. |
+| `scripts/train_phase2.py` | End-to-end training CLI (Colab-friendly, checkpoints every epoch). |
+| `scripts/derive_thresholds.py` | Compute SUSPECT / ATTACK quantiles from benign val. |
+| `scripts/make_demo_pcaps.py` | Synthesize benign + bruteforce demo PCAPs (no live capture needed). |
+| `scripts/demo_score_packets.py` | PCAP-replay or live-NIC scorer with attention-based per-flow explanation. |
+| `notebooks/phase2_colab_train.ipynb` | Colab launcher: clones repo, mounts Drive, trains, plots curves. |
+| `notebooks/phase2_eval.ipynb` | Validation suite: ROC/PR/F1, per-family confusion, ablation, robustness, attention heatmap. |
+| `notebooks/phase2_local_demo.ipynb` | Mac-CPU live demo using PCAP replay. |
+
+### Training on Google Colab (recommended)
+
+1. Push this repo to GitHub.
+2. Open `notebooks/phase2_colab_train.ipynb` in Colab. Set `REPO_URL` in §0.
+3. Choose **Runtime -> Change runtime type -> GPU (T4)**. Run all cells.
+4. The trainer mounts Drive, downloads CIC-IDS2017 once (~500 MB), runs 200
+   epochs MFM + 100 epochs SVDD, and persists checkpoints to
+   `/content/drive/MyDrive/cps_ad_phase2/checkpoints/`.
+5. If Colab disconnects, re-run the train cell — `--resume` will pick up from
+   `ft_svdd_mfm_last.pt`.
+
+### Local live demo (Mac CPU)
+
+```bash
+source .venv/bin/activate
+pip install -r requirements.txt
+python scripts/make_demo_pcaps.py                             # one-time
+python scripts/derive_thresholds.py --ckpt models/ft_svdd_final.pt
+python scripts/demo_score_packets.py --pcap data/demo_pcaps/ssh_bruteforce.pcap \
+                                     --ckpt models/ft_svdd_final.pt
+```
+
+For a real capture:
+
+```bash
+sudo -E python scripts/demo_score_packets.py --live en0 --duration 30 \
+       --ckpt models/ft_svdd_final.pt --quiet-benign
+```
+
+### Why this design (rubric crosswalk)
+
+* **Architecture**: feature-token attention (FT-Transformer), pre-norm residuals,
+  modified loss (MFM + Deep SVDD + InfoNCE auxiliary). The SVDD center sits on a
+  bias-free projection per Ruff et al. 2018 §3 to prevent hypersphere collapse.
+* **Theory**: SVDD loss is derivable from one-class SVM in RKHS; attention is a
+  scaled dot-product softmax (Vaswani 2017); MFM is a denoising objective
+  (Vincent 2008) on a per-feature `[MASK]` token (Devlin 2019).
+* **Dataset & regularization**: CIC-IDS2017 with `leave_one_family_out`
+  (Heartbleed by default) for genuine zero-day evaluation, DropFeature
+  augmentation for the contrastive view, scaler fit on benign train only.
+* **Validation**: ROC / PR / F1 on random + zero-day splits, per-family
+  recall, ablation of MFM-only / SVDD-only / fused, robustness to Gaussian
+  feature noise, CLS->feature attention heatmap for interpretability.
+
+### Literature anchors added in Phase 2
+
+* Sharafaldin, Lashkari & Ghorbani, *Toward Generating a New Intrusion Detection
+  Dataset* (ICISSP 2018) — CIC-IDS2017.
+* Ruff et al., *Deep One-Class Classification* (ICML 2018) — Deep SVDD.
+* Gorishniy et al., *Revisiting Deep Learning Models for Tabular Data* (NeurIPS
+  2021) — FT-Transformer.
+* Vaswani et al., *Attention Is All You Need* (NeurIPS 2017).
+* van den Oord, Li & Vinyals, *Representation Learning with Contrastive Predictive
+  Coding* (2018) — InfoNCE auxiliary.
+* Engelen, Rimmer & Joosen, *Troubleshooting an Intrusion Detection Dataset:
+  the CICIDS2017 Case Study* (IEEE SPW 2021) — label-noise hygiene.
+
 ## License
 
 Educational use — add your institutional license statement if required.
