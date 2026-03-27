@@ -372,12 +372,15 @@ def pretrain_mfm(
             stale += 1
 
         if log_every > 0 and (epoch % log_every == 0):
-            print(f"[MFM] epoch={epoch:03d} train={train_l:.5f} val={val_l:.5f}"
-                  f" best_val={best_val:.5f}")
+            print(
+                f"[MFM] epoch={epoch:03d} train={train_l:.5f} val={val_l:.5f}"
+                f" best_val={best_val:.5f}",
+                flush=True,
+            )
         if on_epoch_end is not None:
             on_epoch_end("mfm", epoch, train_l, val_l, model)
         if stale >= patience:
-            print(f"[MFM] early stop at epoch {epoch}")
+            print(f"[MFM] early stop at epoch {epoch}", flush=True)
             break
 
     if best_state is not None:
@@ -458,7 +461,10 @@ def finetune_svdd(
             history.best_finetune_epoch = epoch
 
         if log_every > 0 and (epoch % log_every == 0):
-            print(f"[SVDD] epoch={epoch:03d} loss={epoch_loss:.5f} mean_r={epoch_r:.5f}")
+            print(
+                f"[SVDD] epoch={epoch:03d} loss={epoch_loss:.5f} mean_r={epoch_r:.5f}",
+                flush=True,
+            )
         if on_epoch_end is not None:
             on_epoch_end("svdd", epoch, epoch_loss, epoch_r, model)
 
