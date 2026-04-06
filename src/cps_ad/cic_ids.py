@@ -256,7 +256,8 @@ def _coerce_numeric(df: pd.DataFrame, feature_cols: Sequence[str]) -> pd.DataFra
     out = df.copy()
     for col in feature_cols:
         out[col] = pd.to_numeric(out[col], errors="coerce")
-    arr = out[list(feature_cols)].to_numpy(dtype=np.float64)
+    # Use float32 to reduce peak RAM during Colab preprocessing.
+    arr = out[list(feature_cols)].to_numpy(dtype=np.float32)
     arr[~np.isfinite(arr)] = np.nan
     arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
     out.loc[:, list(feature_cols)] = arr

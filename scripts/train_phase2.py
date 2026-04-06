@@ -15,6 +15,7 @@ $ python scripts/train_phase2.py \
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import logging
 import sys
@@ -53,6 +54,13 @@ LOG = logging.getLogger("phase2.train")
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Phase 2 trainer.")
     p.add_argument("--data-dir", type=Path, default=None, help="Where CIC-IDS2017 CSVs live.")
+    p.add_argument(
+        "--cic-files",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Optional CIC day CSV file names to load (subset for RAM-safe runs).",
+    )
     p.add_argument("--out-dir", type=Path, required=True, help="Checkpoint / metrics output.")
     p.add_argument("--held-out-family", type=str, default="Heartbleed",
                    choices=["DoS", "DDoS", "PortScan", "BruteForce", "WebAttack",
@@ -119,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     LOG.info("Device: %s", device)
 
     LOG.info("Loading CIC-IDS2017 ...")
-    df = load_cic_ids2017(data_dir=args.data_dir, download=True)
+    df = load_cic_ids2017(data_dir=args.data_dir, download=True, files=args.cic_files)
     LOG.info("Loaded %d rows, %d feature columns.", len(df), df.shape[1] - 2)
     LOG.info("Class balance:\n%s", class_balance_report(df).to_string(index=False))
 
@@ -130,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
         test_benign_frac=args.test_benign_frac,
         seed=args.seed,
     )
+    del df
+    gc.collect()
     LOG.info("Split sizes: train=%d  val=%d  test_known=%d  test_zero_day=%d (held=%s)",
              len(split.train), len(split.val), len(split.test_known),
              len(split.test_zero_day), split.held_out_family)
