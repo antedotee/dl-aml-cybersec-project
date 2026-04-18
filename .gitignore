@@ -22,13 +22,9 @@ models/
 *.pt
 *.npz
 
-# LaTeX build artifacts (keep report/main.tex and references.bib)
-report/*.aux
-report/*.bbl
-report/*.blg
-report/*.log
-report/*.out
-report/*.toc
-report/*.lof
-report/*.lot
-report/*.synctex.gz
+# Keep only final compiled report artifact
+report/*
+!report/main.pdf
+
+# Ignore legacy report working folder completely
+reports/
