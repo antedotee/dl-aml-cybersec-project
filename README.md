@@ -1,52 +1,78 @@
 # CIC-IDS Training and Local Realtime Inference
 
-This repository is simplified to one clear pipeline:
+This repo is my end-to-end anomaly detection workflow on CIC-IDS2017. I kept it split into three training notebooks so I can show progression clearly from classical ML to baseline DL and then to an improvised DL run with stronger validation.
 
-1. Train ML baseline on CIC-IDS2017 in Colab
-2. Train DL model on CIC-IDS2017 in Colab
-3. Run local Scapy inference with exported `.pth` model files
+The final written output for submission is `report/main.pdf`.
 
-`report/` and `reports/` are intentionally kept.
-
-## Repository Structure
+## Project layout
 
 ```text
 notebooks/
   train_phase1_ml_colab.ipynb
   train_phase2_dl_colab.ipynb
+  train_phase2_dl_colab_improvised.ipynb
   local_realtime_inference_scapy.ipynb
+
+figures/
+  phase1/
+  phase2/
+  phase2_improvised/
 
 models/
   phase1_ml/
   phase2_dl/
 
-data/
-  cic_ids/     # keep empty in git, upload CSVs to Google Drive
-
 report/
-reports/
+  main.pdf
 ```
 
-## Notebook Roles
+## Notebook overview
 
-- `train_phase1_ml_colab.ipynb`
-  - Isolation Forest + One-Class SVM
-  - Exports `phase1_ml_model.pth`
+- `train_phase1_ml_colab.ipynb`  
+  Classical unsupervised baselines (Isolation Forest and One-Class SVM), saved as `phase1_ml_model.pth` with result JSON.
 
-- `train_phase2_dl_colab.ipynb`
-  - Autoencoder training
-  - Exports `ft_ae.pth`
+- `train_phase2_dl_colab.ipynb`  
+  Baseline deep autoencoder training, saved as `ft_ae.pth` and `history.json`.
 
-- `local_realtime_inference_scapy.ipynb`
-  - Local replay/live inference
-  - Loads both model artifacts and flags anomalies
+- `train_phase2_dl_colab_improvised.ipynb`  
+  Improvised Phase 2 run with ablation, diagnostics, robustness stress tests, and saved outputs:
+  - `ft_ae_level7.pth`
+  - `level7_results.json`
+  - `history_level7.json`
 
-## Google Drive Upload (for both training notebooks)
+- `local_realtime_inference_scapy.ipynb`  
+  Realtime/local packet-flow inference using exported model artifacts.
 
-Create:
+## Latest result snapshot
+
+### Phase 1
+- Isolation Forest (known): AUC `0.6984`, F1 `0.0284`
+- Isolation Forest (zero-day): AUC `0.9996`, F1 `0.0366`
+- One-Class SVM (known): AUC `0.7588`, F1 `0.5835`
+- One-Class SVM (zero-day): AUC `0.9995`, F1 `0.0330`
+
+### Phase 2 baseline
+- Best epoch: `49`
+- Autoencoder (known): AUC `0.8302`, F1 `0.6035`
+- Autoencoder (zero-day): AUC `0.9994`, F1 `0.0166`
+
+### Phase 2 improvised
+- Selected deployment candidate: `BaselineAE`
+- BaselineAE (known): AUC `0.8815`, F1 `0.8985`
+- ResidualDenoisingAE (known): AUC `0.8045`, F1 `0.8976`
+- Trivial comparator (known): AUC `0.3268`, F1 `0.0046`
+- Robustness (AUC):
+  - known + noise: `0.8707`
+  - known + feature dropout: `0.7325`
+  - zero-day + noise: `0.9998`
+  - zero-day + feature dropout: `0.9874`
+
+## Data and artifacts
+
+Training data source folder used in Colab:
 - `MyDrive/cic_ids_data/`
 
-Upload these 8 CSV files:
+CSV set used:
 - `Monday-WorkingHours.pcap_ISCX.csv`
 - `Tuesday-WorkingHours.pcap_ISCX.csv`
 - `Wednesday-workingHours.pcap_ISCX.csv`
@@ -55,27 +81,3 @@ Upload these 8 CSV files:
 - `Friday-WorkingHours-Morning.pcap_ISCX.csv`
 - `Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv`
 - `Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv`
-
-## Artifacts To Keep In Repo After Training
-
-- From phase1:
-  - `models/phase1_ml/phase1_ml_model.pth`
-  - `models/phase1_ml/phase1_ml_results.json`
-
-- From phase2:
-  - `models/phase2_dl/ft_ae.pth`
-  - `models/phase2_dl/history.json`
-
-## Local Inference Quick Start
-
-1. Put model files in:
-   - `models/phase1_ml/phase1_ml_model.pth`
-   - `models/phase2_dl/ft_ae.pth`
-2. Open `notebooks/local_realtime_inference_scapy.ipynb`
-3. Choose PCAP replay or live sniffing
-4. Run all cells
-
-## Notes
-
-- Legacy NSL/hybrid code, tests, and old scripts were removed.
-- Do not commit raw CIC-IDS CSV files.
