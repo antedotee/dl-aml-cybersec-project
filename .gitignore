@@ -28,3 +28,5 @@ report/*
 
 # Ignore legacy report working folder completely
 reports/
+
+tmp/
