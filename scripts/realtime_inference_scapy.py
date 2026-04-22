@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import pickle
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,12 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from scapy.all import IP, TCP, UDP, rdpcap, sniff
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from src.flow_autoencoder import FlowAutoEncoder  # noqa: E402
 
 
 class Autoencoder(nn.Module):
@@ -34,7 +41,7 @@ class Autoencoder(nn.Module):
 
 
 def parse_args() -> argparse.Namespace:
-    repo = Path(__file__).resolve().parents[1]
+    repo = _REPO_ROOT
     parser = argparse.ArgumentParser(
         description="Realtime/PCAP zero-day anomaly inference with model selection."
     )
@@ -64,14 +71,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--phase1-model",
         type=Path,
-        default=repo / "models" / "phase1_ml" / "phase1_ml_model.pth",
-        help="Path to phase1 ML artifact.",
+        default=repo / "artifacts" / "classical" / "oc_svm_model.pkl",
+        help="Path to classical IDS pickle (notebook 01) or legacy phase1_ml_model.pth pickle.",
     )
     parser.add_argument(
         "--phase2-model",
         type=Path,
-        default=repo / "models" / "phase2_dl" / "ft_ae.pth",
-        help="Path to phase2 DL artifact (or level7 checkpoint).",
+        default=repo / "artifacts" / "dl" / "ae_weights.pt",
+        help="Notebook 02: raw state_dict (ae_weights.pt) or legacy full checkpoint.",
+    )
+    parser.add_argument(
+        "--phase2-manifest",
+        type=Path,
+        default=repo / "artifacts" / "dl" / "dl_manifest.pkl",
+        help="Notebook 02 manifest (features, scaler, arch, threshold). Omit for legacy phase2 ckpt.",
     )
     parser.add_argument(
         "--out-csv",
@@ -226,19 +239,55 @@ def run_phase1(flow_df: pd.DataFrame, artifact_path: Path):
     cols = list(art["features"])
     x = align(flow_df, cols)
     xs = art["scaler"].transform(x)
-    iso_score = -art["isolation_forest"].score_samples(xs)
-    svm_score = -art["one_class_svm"].decision_function(xs)
-    iso_pred = iso_score >= float(art["iso_threshold"])
-    svm_pred = svm_score >= float(art["svm_threshold"])
-    attack = (iso_pred | svm_pred).astype(int)
+
+    if "one_class_svm" in art and "isolation_forest" in art:
+        iso_score = -art["isolation_forest"].score_samples(xs)
+        svm_score = -art["one_class_svm"].decision_function(xs)
+        iso_pred = iso_score >= float(art["iso_threshold"])
+        svm_pred = svm_score >= float(art["svm_threshold"])
+        attack = (iso_pred | svm_pred).astype(int)
+        return attack, iso_score, svm_score
+
+    svm = art["model"]
+    svm_score = -np.asarray(svm.decision_function(xs), dtype=np.float64)
+    attack = (svm.predict(xs) == -1).astype(int)
+    iso_score = np.zeros(len(attack), dtype=np.float64)
     return attack, iso_score, svm_score
 
 
-def run_phase2(flow_df: pd.DataFrame, model_path: Path):
+def run_phase2(flow_df: pd.DataFrame, model_path: Path, manifest_path: Path | None = None):
     if not model_path.exists():
         raise FileNotFoundError(f"Missing phase2 artifact: {model_path}")
-    ckpt = torch.load(model_path, map_location="cpu")
 
+    if manifest_path is not None and manifest_path.exists():
+        with manifest_path.open("rb") as f:
+            manifest = pickle.load(f)
+        h1, h2, h3 = manifest["ae_arch"]["dims"]
+        n_in = int(manifest["input_dim"])
+        scaler = manifest["scaler"]
+        feat = list(manifest["features"])
+        thr = float(manifest["best_threshold_mse"])
+        try:
+            ckpt_raw = torch.load(model_path, map_location="cpu", weights_only=False)
+        except TypeError:
+            ckpt_raw = torch.load(model_path, map_location="cpu")
+        state = ckpt_raw["state_dict"] if isinstance(ckpt_raw, dict) and "state_dict" in ckpt_raw else ckpt_raw
+        model = FlowAutoEncoder(n_in, int(h1), int(h2), int(h3))
+        model.load_state_dict(state)
+        model.eval()
+        x = align(flow_df, feat)
+        xs = scaler.transform(x)
+        with torch.no_grad():
+            xt = torch.from_numpy(xs.astype(np.float32))
+            rec = model(xt)
+            err = ((rec - xt) ** 2).mean(dim=1).cpu().numpy()
+        attack = (err >= thr).astype(int)
+        return attack, err
+
+    try:
+        ckpt = torch.load(model_path, map_location="cpu", weights_only=False)
+    except TypeError:
+        ckpt = torch.load(model_path, map_location="cpu")
     cfg = ckpt["config"]
     model = Autoencoder(
         int(cfg["n_features"]),
@@ -283,7 +332,9 @@ def main():
         out["model1_svm_score"] = svm_score
 
     if mode in {"phase2", "both"}:
-        p2_attack, dl_err = run_phase2(flow_df, args.phase2_model)
+        p2_attack, dl_err = run_phase2(
+            flow_df, args.phase2_model, manifest_path=args.phase2_manifest
+        )
         out["model2_attack"] = p2_attack
         out["model2_error"] = dl_err
 
