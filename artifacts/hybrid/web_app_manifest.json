@@ -1,0 +1,21 @@
+{
+  "generated_by": "03_hybrid_fusion_colab.ipynb",
+  "copy_into_repo": [
+    "artifacts/phase3/oc_svm_model.pkl",
+    "artifacts/phase3/ae_weights.pt",
+    "artifacts/phase3/dl_manifest.pkl",
+    "artifacts/phase3/fusion_config.json",
+    "artifacts/classical/oc_svm_model.pkl",
+    "artifacts/dl/ae_weights.pt",
+    "artifacts/dl/dl_manifest.pkl",
+    "artifacts/hybrid/fusion_config.json",
+    "artifacts/hybrid/hybrid_results.json",
+    "artifacts/hybrid/run_config.json"
+  ],
+  "realtime_web_ui": "uvicorn web.app:app --host 0.0.0.0 --port 8000",
+  "scapy_demo_notes": [
+    "Often requires sudo / admin for live sniff.",
+    "Use a real interface name (ip link, ifconfig, or scapy).",
+    "Test with --pcap before live demo if permissions fail."
+  ]
+}

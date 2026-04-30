@@ -1,0 +1,4 @@
+model,macro_f1,mean_fold_accuracy,mean_fold_recall,mean_fold_precision,mean_fold_f1_binary,mean_fold_f1_macro,mean_fold_specificity,mean_fold_fallout_fpr,mean_fold_roc_auc
+ML_only_OC_SVM,0.636213,0.867486,0.414717,0.311612,0.34875,0.636213,0.902229,0.097771,
+DL_only_AE,0.661208,0.905409,0.369066,0.390507,0.375789,0.661208,0.949994,0.050006,0.728233
+Hybrid_fusion,0.652156,0.883229,0.414006,0.346646,0.371086,0.652156,0.91998,0.08002,0.718732
