@@ -19,7 +19,6 @@ data/cic_ids/*.csv
 data/cic_ids/*.zip
 data/demo_pcaps/*.pcap
 models/
-*.pt
 *.npz
 
 # Keep only final compiled report artifact
