@@ -1,83 +1,85 @@
-# CIC-IDS Training and Local Realtime Inference
+# CICIDS2017 anomaly IDS: classical ML, autoencoder, and hybrid fusion
 
-This repo is my end-to-end anomaly detection workflow on CIC-IDS2017. I kept it split into three training notebooks so I can show progression clearly from classical ML to baseline DL and then to an improvised DL run with stronger validation.
+This repository holds a **benign-only anomaly detection** pipeline on **CICIDS2017 flow CSVs**: classical one-class models, a reconstruction autoencoder, and a **hybrid** score fusion. Training is split across **three self-contained Jupyter notebooks** (no dependency on a shared `src` package inside those notebooks). The written report is `report/main.pdf`.
 
-The final written output for submission is `report/main.pdf`.
+## Local setup
 
-## Project layout
+1. **Python**  
+   Use Python 3.11+ (3.12 is fine). A virtual environment is recommended.
+
+2. **Create and activate a venv** (example):
+
+   ```bash
+   cd /path/to/dl-aml-cybersec-project
+   python3 -m venv .venv
+   source .venv/bin/activate   # Windows: .venv\Scripts\activate
+   ```
+
+3. **Install dependencies**
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+   Optional: **ThunderSVM** (`thundersvm`) on a GPU machine speeds up One-Class SVM in notebook 01; sklearn’s RBF OC-SVM on CPU may subsample large benign sets.
+
+4. **Data layout**  
+   Download the **eight ISCX flow CSVs** for CICIDS2017 and place them in a folder named **`cic_ids_data`** at the project root (same layout as in Colab’s `MyDrive/cic_ids_data`):
+
+   ```text
+   cic_ids_data/
+     Monday-WorkingHours.pcap_ISCX.csv
+     Tuesday-WorkingHours.pcap_ISCX.csv
+     Wednesday-workingHours.pcap_ISCX.csv
+     Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv
+     Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv
+     Friday-WorkingHours-Morning.pcap_ISCX.csv
+     Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv
+     Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv
+   ```
+
+   Large CSVs are commonly gitignored; you must provide them locally.
+
+5. **Run notebooks**  
+   Open `notebooks/` in Jupyter, VS Code, or upload to Colab. Each notebook sets `ROOT_ARTIFACTS` to `./artifacts` when not on Colab.
+
+## Project layout (current)
 
 ```text
 notebooks/
-  train_phase1_ml_colab.ipynb
-  train_phase2_dl_colab.ipynb
-  train_phase2_dl_colab_improvised.ipynb
-  local_realtime_inference_scapy.ipynb
+  01_classical_ids_colab.ipynb      # Classical ML baselines
+  02_deep_learning_autoencoder_colab.ipynb   # Deep autoencoder IDS
+  03_hybrid_fusion_colab_updated.ipynb     # OC-SVM + AE + fusion (end-to-end)
 
-figures/
-  phase1/
-  phase2/
-  phase2_improvised/
 
-models/
-  phase1_ml/
-  phase2_dl/
 
 report/
-  main.pdf
+  main.pdf                  # submission PDF
+
+requirements.txt
 ```
 
-## Notebook overview
+## What the three notebooks do
 
-- `train_phase1_ml_colab.ipynb`  
-  Classical unsupervised baselines (Isolation Forest and One-Class SVM), saved as `phase1_ml_model.pth` with result JSON.
+### 01 — `01_classical_ids_colab.ipynb` (classical IDS)
 
-- `train_phase2_dl_colab.ipynb`  
-  Baseline deep autoencoder training, saved as `ft_ae.pth` and `history.json`.
+**Approach:** Unsupervised detectors trained **only on benign** flows after correlation pruning, median imputation, and standard scaling fit on benign data. The notebook evaluates **One-Class SVM** (RBF kernel) over a **ν sweep** and optional **Isolation Forest** for comparison. Per-class metrics and tables (e.g. accuracy vs. ν) summarize how well each attack family is separated from benign in feature space.
 
-- `train_phase2_dl_colab_improvised.ipynb`  
-  Improvised Phase 2 run with ablation, diagnostics, robustness stress tests, and saved outputs:
-  - `ft_ae_level7.pth`
-  - `level7_results.json`
-  - `history_level7.json`
+**Outputs (typical):** `artifacts/classical/` including figures and `oc_svm_model.pkl` when saved.
 
-- `local_realtime_inference_scapy.ipynb`  
-  Realtime/local packet-flow inference using exported model artifacts.
+### 02 — `02_deep_learning_autoencoder_colab.ipynb` (deep learning)
 
-## Latest result snapshot
+**Approach:** A **fully connected autoencoder** (`torch.nn`) learns to reconstruct benign flows; anomaly scores come from **reconstruction error** (e.g. MSE). Thresholds are swept to expose the precision–recall trade-off. The notebook exports per-class summaries and plots (e.g. per-class macro-F1 vs. threshold), analogous to reporting in autoencoder-based IDS papers.
 
-### Phase 1
-- Isolation Forest (known): AUC `0.6984`, F1 `0.0284`
-- Isolation Forest (zero-day): AUC `0.9996`, F1 `0.0366`
-- One-Class SVM (known): AUC `0.7588`, F1 `0.5835`
-- One-Class SVM (zero-day): AUC `0.9995`, F1 `0.0330`
+**Outputs (typical):** `artifacts/dl/` including `ae_weights.pt`, `dl_manifest.pkl`, and figure/table CSVs under `artifacts/dl/figures/`.
 
-### Phase 2 baseline
-- Best epoch: `49`
-- Autoencoder (known): AUC `0.8302`, F1 `0.6035`
-- Autoencoder (zero-day): AUC `0.9994`, F1 `0.0166`
+### 03 — `03_hybrid_fusion_colab_updated.ipynb` (hybrid)
 
-### Phase 2 improvised
-- Selected deployment candidate: `BaselineAE`
-- BaselineAE (known): AUC `0.8815`, F1 `0.8985`
-- ResidualDenoisingAE (known): AUC `0.8045`, F1 `0.8976`
-- Trivial comparator (known): AUC `0.3268`, F1 `0.0046`
-- Robustness (AUC):
-  - known + noise: `0.8707`
-  - known + feature dropout: `0.7325`
-  - zero-day + noise: `0.9998`
-  - zero-day + feature dropout: `0.9874`
+**Approach:** Single end-to-end pipeline: trains **OC-SVM** and **autoencoder** on the same preprocessing, then **fuses** normalized scores with calibrated weights (e.g. validation-tuned mix of SVM and AE terms) and an operating threshold. Includes an explicit **ablation** comparing **ML-only**, **DL-only**, and **hybrid fusion** on aligned folds.
 
-## Data and artifacts
+**Outputs:** Writes `artifacts/hybrid/` (`ablation_summary.csv`, `hybrid_results.json`, `fusion_config.json`, figures), mirrors under `artifacts/classical/` and `artifacts/dl/`, and prefers **`artifacts/phase3/`** as the complete bundle for a local realtime web UI when that app is available (command is documented in the notebook manifest).
 
-Training data source folder used in Colab:
-- `MyDrive/cic_ids_data/`
+## Live capture / realtime notes
 
-CSV set used:
-- `Monday-WorkingHours.pcap_ISCX.csv`
-- `Tuesday-WorkingHours.pcap_ISCX.csv`
-- `Wednesday-workingHours.pcap_ISCX.csv`
-- `Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv`
-- `Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv`
-- `Friday-WorkingHours-Morning.pcap_ISCX.csv`
-- `Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv`
-- `Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv`
+Live sniffing (Scapy) usually needs **elevated privileges** on the host (`sudo` on macOS/Linux), the correct interface name (`en0`, `eth0`, etc.), or **PCAP file** input. Notebook **03** also documents how to run a realtime web UI (`uvicorn` and `artifacts/phase3/`) when that application code is present in your environment.
+
